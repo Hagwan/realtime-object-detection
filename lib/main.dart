@@ -38,6 +38,7 @@ class RealTimeObjectDetection extends StatefulWidget {
 class _RealTimeObjectDetectionState extends State<RealTimeObjectDetection> {
   late CameraController _controller;
   bool isModelLoaded = false;
+  bool isDetecting = false; // Add this flag
   List<dynamic>? recognitions;
   int imageHeight = 0;
   int imageWidth = 0;
@@ -104,7 +105,8 @@ class _RealTimeObjectDetectionState extends State<RealTimeObjectDetection> {
       return;
     }
     _controller.startImageStream((CameraImage image) {
-      if (isModelLoaded) {
+      if (isModelLoaded && !isDetecting) {
+        // Check if model is not busy
         runModel(image);
       }
     });
@@ -112,7 +114,16 @@ class _RealTimeObjectDetectionState extends State<RealTimeObjectDetection> {
   }
 
   void runModel(CameraImage image) async {
-    if (image.planes.isEmpty) return;
+    setState(() {
+      isDetecting = true; // Set to true to indicate processing
+    });
+
+    if (image.planes.isEmpty) {
+      setState(() {
+        isDetecting = false; // Reset the flag if the image is invalid
+      });
+      return;
+    }
 
     var recognitions = await Tflite.detectObjectOnFrame(
       bytesList: image.planes.map((plane) => plane.bytes).toList(),
@@ -127,8 +138,8 @@ class _RealTimeObjectDetectionState extends State<RealTimeObjectDetection> {
 
     setState(() {
       this.recognitions = recognitions;
-      // imageHeight = image.height;
-      // imageWidth = image.width;
+
+      isDetecting = false; // Reset the flag after processing
     });
   }
 
@@ -142,15 +153,13 @@ class _RealTimeObjectDetectionState extends State<RealTimeObjectDetection> {
         title: Text('Real-time Object Detection'),
       ),
       body: Column(
-        // mainAxisAlignment: MainAxisAlignment.center,
-
         children: [
           Container(
             width: MediaQuery.of(context).size.width,
             height: MediaQuery.of(context).size.height * 0.8,
             child: Stack(
               children: [
-                CameraPreview(_controller),
+                Center(child: CameraPreview(_controller)),
                 if (recognitions != null)
                   BoundingBoxes(
                     recognitions: recognitions!,
@@ -204,28 +213,30 @@ class BoundingBoxes extends StatelessWidget {
         var y = rec["rect"]["y"] * screenH;
         double w = rec["rect"]["w"] * screenW;
         double h = rec["rect"]["h"] * screenH;
-
+        //  var translatedrec = rec["detectedClass"];
+        //  translatedrec = translatedrec+"@";
         return Positioned(
           left: x,
           top: y,
           width: w,
           height: h,
           child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: Colors.red,
-                width: 3,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: Colors.purpleAccent,
+                  width: 3,
+                ),
               ),
-            ),
-            child: Text(
-              "${rec["detectedClass"]} ${(rec["confidenceInClass"] * 100).toStringAsFixed(0)}% Width:${(w).ceil()} Heght: ${h.ceil()}",
-              style: TextStyle(
-                color: Colors.red,
-                fontSize: 15,
-                background: Paint()..color = Colors.black,
-              ),
-            ),
-          ),
+              child: Text(
+                rec["confidenceInClass"] >= 0.5
+                    ? "${rec["detectedClass"]} ${(rec["confidenceInClass"] * 100).toStringAsFixed(0)}%"
+                    : "",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  background: Paint()..color = Colors.purple,
+                ),
+              )),
         );
       }).toList(),
     );
